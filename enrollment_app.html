@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enrollamiento Facial de Alumnos</title>
+    <!-- Tailwind CSS CDN para estilos modernos y responsivos -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- face-api.js CDN para reconocimiento facial -->
+    <!-- Se mantiene el CDN para la librería principal de face-api.js -->
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <style>
+        /* Estilos personalizados */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #e2e8f0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 1rem;
+            box-sizing: border-box;
+        }
+        .container {
+            background-color: #ffffff;
+            border-radius: 1.5rem;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            padding: 2.5rem;
+            width: 100%;
+            max-width: 36rem; /* Un poco más ancho para la interfaz de enrollamiento */
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+        video, canvas {
+            width: 100%;
+            height: auto;
+            border-radius: 0.75rem;
+            background-color: #000;
+            aspect-ratio: 16 / 9;
+            object-fit: cover;
+        }
+        .button-primary {
+            background-image: linear-gradient(to right, #6366f1, #8b5cf6);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.75rem;
+            font-weight: 600;
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            cursor: pointer;
+            border: none;
+            outline: none;
+        }
+        .button-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
+        }
+        .message-box {
+            padding: 1rem;
+            border-radius: 0.5rem;
+            text-align: left;
+            word-wrap: break-word;
+        }
+        .message-success {
+            background-color: #d1fae5;
+            color: #065f46;
+            border-left: 4px solid #10b981;
+        }
+        .message-error {
+            background-color: #fee2e2;
+            color: #991b1b;
+            border-left: 4px solid #ef4444;
+        }
+        .loading-spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-left-color: #6366f1;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+            margin-right: 0.5rem;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-2xl font-bold text-gray-800">Enrollamiento Facial de Alumnos</h1>
+        <p class="text-gray-600">Captura la foto de referencia y guarda el descriptor facial para cada alumno.</p>
+
+        <!-- Área de video para la previsualización de la cámara -->
+        <video id="videoInput" class="rounded-lg"></video>
+        <!-- Canvas oculto para procesar la imagen -->
+        <canvas id="canvas" class="hidden"></canvas>
+
+        <!-- Campo para el ID del alumno -->
+        <input type="text" id="studentIdInput" placeholder="ID del Alumno (ej. A001)"
+               class="p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+
+        <!-- Botón para iniciar la cámara -->
+        <button id="startCameraButton" class="button-primary flex items-center justify-center">
+            <span id="cameraButtonText">Iniciar Cámara</span>
+        </button>
+
+        <!-- Botón para capturar la foto y guardar el descriptor -->
+        <button id="enrollButton" class="button-primary flex items-center justify-center" disabled>
+            <span id="enrollButtonText">Capturar Foto y Enrollar</span>
+        </button>
+
+        <!-- Área para mostrar mensajes al usuario -->
+        <div id="message" class="message-box hidden"></div>
+    </div>
+
+    <script>
+        // Se ejecuta cuando la ventana y todos sus recursos han sido cargados
+        window.onload = async function() {
+            // Referencias a elementos del DOM
+            const videoInput = document.getElementById('videoInput');
+            const canvas = document.getElementById('canvas');
+            const studentIdInput = document.getElementById('studentIdInput');
+            const startCameraButton = document.getElementById('startCameraButton');
+            const enrollButton = document.getElementById('enrollButton');
+            const messageDiv = document.getElementById('message');
+            const cameraButtonText = document.getElementById('cameraButtonText');
+            const enrollButtonText = document.getElementById('enrollButtonText');
+
+            // --- CONFIGURACIÓN DEL GOOGLE APPS SCRIPT WEB APP ---
+            // ¡IMPORTANTE! Reemplaza 'YOUR_APPS_SCRIPT_WEB_APP_URL' con la URL de tu Google Apps Script Web App.
+            // Esta URL la obtuviste en el Paso 3 de la Parte 1.
+            const APPS_SCRIPT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxXXpBGkmLKfMA4IGZgG6BZMah2MnSAKa9CkRXJPnupE3ucF5UxjgfnfxlUKQxnN9s/exec';
+            // ---------------------------------------------------
+
+            // Ruta donde se encuentran los modelos de face-api.js
+            // ¡IMPORTANTE!: Ahora se asume que los modelos están en una carpeta 'models'
+            // en el mismo directorio que este archivo HTML.
+            // Debes descargar los modelos de face-api.js y colocarlos en esa carpeta.
+            const MODELS_URL = './models/'; // Ruta relativa a la carpeta 'models'
+
+            let stream = null; // Para almacenar el stream de la cámara
+
+            // Función para mostrar mensajes al usuario
+            function showMessage(text, type) {
+                messageDiv.textContent = text;
+                messageDiv.className = `message-box ${type}`;
+                messageDiv.classList.remove('hidden');
+            }
+
+            // Función para ocultar mensajes
+            function hideMessage() {
+                messageDiv.classList.add('hidden');
+            }
+
+            // Cargar los modelos de face-api.js
+            async function loadModels() {
+                showMessage('Cargando modelos de IA, por favor espera...', 'message-box'); // Mensaje genérico
+                try {
+                    // Carga los modelos desde la URL local/relativa
+                    await faceapi.nets.tinyFaceDetector.load(MODELS_URL);
+                    await faceapi.nets.faceLandmark68Net.load(MODELS_URL);
+                    await faceapi.nets.faceRecognitionNet.load(MODELS_URL);
+                    showMessage('Modelos de IA cargados. Puedes iniciar la cámara.', 'message-success');
+                    startCameraButton.disabled = false; // Habilitar botón de cámara
+                } catch (error) {
+                    showMessage('Error al cargar los modelos de IA. Asegúrate de que la carpeta "models" esté en el mismo directorio que este archivo HTML y contenga todos los modelos. Recarga la página.', 'message-error');
+                    console.error('Error loading models:', error);
+                    // Asegurarse de que los botones se re-habiliten en caso de error de carga
+                    startCameraButton.disabled = false;
+                    cameraButtonText.textContent = 'Iniciar Cámara';
+                    enrollButton.disabled = true;
+                }
+            }
+
+            // Iniciar la cámara
+            async function startCamera() {
+                hideMessage();
+                cameraButtonText.innerHTML = '<span class="loading-spinner"></span> Iniciando...';
+                startCameraButton.disabled = true;
+                enrollButton.disabled = true; // Deshabilitar el botón de enrollar mientras no haya cámara
+
+                try {
+                    // Solicitar acceso a la cámara
+                    stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    videoInput.srcObject = stream;
+                    await videoInput.play(); // Iniciar la reproducción del video
+                    cameraButtonText.textContent = 'Cámara Iniciada';
+                    enrollButton.disabled = false; // Habilitar el botón de enrollar
+
+                } catch (err) {
+                    showMessage('Error al acceder a la cámara. Asegúrate de dar permisos.', 'message-error');
+                    console.error('Error accessing camera:', err);
+                    cameraButtonText.textContent = 'Iniciar Cámara';
+                    startCameraButton.disabled = false;
+                }
+            }
+
+            // Detener la cámara
+            function stopCamera() {
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                    videoInput.srcObject = null;
+                }
+                cameraButtonText.textContent = 'Iniciar Cámara';
+                startCameraButton.disabled = false;
+                enrollButton.disabled = true;
+            }
+
+            // Capturar foto, detectar rostro y enrollar
+            async function captureAndEnroll() {
+                hideMessage();
+                const studentId = studentIdInput.value.trim();
+
+                if (!studentId) {
+                    showMessage('Por favor, ingresa el ID del Alumno.', 'message-error');
+                    return;
+                }
+                if (!videoInput.srcObject) {
+                    showMessage('La cámara no está activa. Inicia la cámara primero.', 'message-error');
+                    return;
+                }
+
+                enrollButtonText.innerHTML = '<span class="loading-spinner"></span> Procesando...';
+                enrollButton.disabled = true;
+                startCameraButton.disabled = true; // Deshabilitar para evitar conflictos
+
+                try {
+                    // Configurar el canvas con las dimensiones del video
+                    canvas.width = videoInput.videoWidth;
+                    canvas.height = videoInput.videoHeight;
+                    const context = canvas.getContext('2d');
+                    context.drawImage(videoInput, 0, 0, canvas.width, canvas.height);
+
+                    console.log('Intentando detectar rostro y extraer descriptor...');
+                    // Detectar rostros y extraer descriptores
+                    const detections = await faceapi.detectSingleFace(canvas, new faceapi.TinyFaceDetectorOptions())
+                                                    .withFaceLandmarks()
+                                                    .withFaceDescriptor();
+
+                    if (!detections) {
+                        console.log('No se detectó ningún rostro.');
+                        showMessage('No se detectó ningún rostro. Asegúrate de estar bien centrado y con buena iluminación.', 'message-error');
+                        enrollButtonText.textContent = 'Capturar Foto y Enrollar';
+                        enrollButton.disabled = false;
+                        startCameraButton.disabled = false;
+                        return;
+                    }
+
+                    console.log('Rostro detectado. Extrayendo descriptor...');
+                    // El descriptor facial es un Float32Array, lo convertimos a un array normal para JSON
+                    const descriptorArray = Array.from(detections.descriptor);
+                    const descriptorString = JSON.stringify(descriptorArray); // Convertir a string para enviar
+                    console.log('Descriptor extraído. Enviando a Google Apps Script...');
+
+                    // Enviar datos al Google Apps Script
+                    const formData = new URLSearchParams();
+                    formData.append('action', 'enroll'); // Indicar al script que es una acción de enrollamiento
+                    formData.append('id', studentId);
+                    formData.append('descriptor', descriptorString);
+
+                    const response = await fetch(APPS_SCRIPT_WEB_APP_URL, {
+                        method: 'POST',
+                        mode: 'no-cors', // Necesario para Apps Script Web Apps
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: formData.toString()
+                    });
+
+                    console.log('Solicitud enviada a Apps Script. Asumiendo éxito debido a no-cors.');
+                    // Debido a 'no-cors', no podemos leer la respuesta directamente.
+                    // Asumimos éxito si no hay error de red.
+                    showMessage(`Enrollamiento de ${studentId} exitoso.`, 'message-success');
+                    studentIdInput.value = ''; // Limpiar el input
+                    enrollButtonText.textContent = 'Capturar Foto y Enrollar';
+                    enrollButton.disabled = false;
+                    startCameraButton.disabled = false;
+
+                } catch (error) {
+                    console.error('Error durante el enrollamiento:', error);
+                    showMessage('Error al enrollar. Asegúrate de que la cámara esté activa, haya un rostro claro y el ID del alumno sea correcto. Revisa la consola para más detalles.', 'message-error');
+                    enrollButtonText.textContent = 'Capturar Foto y Enrollar';
+                    enrollButton.disabled = false;
+                    startCameraButton.disabled = false;
+                }
+            }
+
+            // Event Listeners
+            startCameraButton.addEventListener('click', startCamera);
+            enrollButton.addEventListener('click', captureAndEnroll);
+
+            // Limpiar la cámara al cerrar la página
+            window.addEventListener('beforeunload', stopCamera);
+
+            // Cargar modelos al iniciar la página
+            loadModels();
+        };
+    </script>
+</body>
+</html>

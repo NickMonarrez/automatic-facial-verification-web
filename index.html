@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SISCO (Sistema de Identificación Segura CONALEP)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.1.0/dist/jsQR.min.js"></script>
+    <style>
+        /* Estilos personalizados para la aplicación */
+        html, body {
+            height: 100%; /* Asegura que html y body ocupen toda la altura del viewport */
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            /* Fondo de imagen */
+            background-color: #e0f0e0; /* Un verde muy claro como fallback */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh; /* Asegura que el body tenga al menos la altura de la ventana */
+            position: relative; /* Necesario para el z-index del contenedor de la imagen de fondo */
+            overflow: hidden; /* Evita barras de desplazamiento si la imagen es muy grande */
+        }
+        /* Contenedor para la imagen de fondo que cubre toda la pantalla */
+        #background-image-container {
+            position: fixed; /* Fija la imagen al viewport */
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            /* Ruta de tu nueva imagen de fondo */
+            background-image: url('https://drive.google.com/uc?export=download&id=1tG6StVp7WET_S5o23ikuD1ncSMpKwG0w');
+            background-size: cover; /* Cubre todo el área */
+            background-position: center; /* Centra la imagen */
+            background-repeat: no-repeat; /* Evita que la imagen se repita */
+            z-index: -1; /* Envía la imagen al fondo, detrás de todo lo demás */
+        }
+        .container {
+            background-color: rgba(255, 255, 255, 0.9); /* Fondo blanco semi-transparente para el contenedor principal */
+            border-radius: 1.5rem;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            padding: 2.5rem;
+            width: 100%;
+            max-width: 36rem;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            position: relative; /* Necesario para posicionar el logo */
+            z-index: 1; /* Asegura que el contenedor principal esté por encima de la imagen de fondo */
+        }
+        /* Estilos para el logo */
+        .logo {
+            position: absolute;
+            top: 1.5rem; /* Ajusta la distancia desde la parte superior */
+            right: 1.5rem; /* Ajusta la distancia desde el margen derecho */
+            width: 150px; /* Tamaño del logo */
+            height: auto;
+            border-radius: 0.5rem; /* Bordes ligeramente redondeados para el logo */
+        }
+        /* Contenedor para el video y el canvas superpuesto */
+        .video-canvas-container {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16 / 9; /* Mantiene la proporción de aspecto del video */
+            border-radius: 0.75rem;
+            overflow: hidden; /* Asegura que el contenido dentro de los bordes redondeados no se desborde */
+            background-color: #000; /* Fondo negro mientras carga el video */
+        }
+        .video-canvas-container video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* Asegura que el video/canvas cubra el área sin distorsión */
+            border-radius: 0.75rem; /* Asegura los bordes redondeados */
+            display: none; /* Ocultar el elemento de video, el canvas será el visible */
+        }
+        .video-canvas-container canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* Asegura que el video/canvas cubra el área sin distorsión */
+            border-radius: 0.75rem; /* Asegura los bordes redondeados */
+            display: block; /* Asegurar que el canvas sea visible */
+        }
+        .button-primary {
+            background-image: linear-gradient(to right, #6366f1, #8b5cf6);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.75rem;
+            font-weight: 600;
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            cursor: pointer;
+            border: none;
+            outline: none;
+        }
+        .button-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
+        }
+        .message-box {
+            padding: 1rem;
+            border-radius: 0.5rem;
+            text-align: left;
+            word-wrap: break-word;
+        }
+        .message-success {
+            background-color: #d1fae5;
+            color: #065f46;
+            border-left: 4px solid #10b981;
+        }
+        .message-error {
+            background-color: #fee2e2;
+            color: #991b1b;
+            border-left: 4px solid #ef4444;
+        }
+        .loading-spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-left-color: #6366f1;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+            margin-right: 0.5rem;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div id="background-image-container"></div>
+
+    <div class="container">
+        <img src="https://drive.google.com/uc?export=download&id=1rgOTImMPVptVWy49QhuSvlcuNXRF98Rp" alt="Logo CONALEP" class="logo" onerror="console.error('Error al cargar el logo. Asegúrate de que orgullosamente-conalep-logo-png_seeklogo-289552.png esté en la misma carpeta que attendance_app.html o que la ruta sea correcta.');">
+
+        <h1 class="text-5xl font-bold text-green-600 text-center pr-40">SISCO (Sistema de Identificación Segura CONALEP)</h1>
+        <p class="text-2xl font-bold text-gray-600 text-center -mt-4">PLANTEL CONALEP NAVOLATO</p>
+        
+        <div id="login-container">
+            <p class="text-gray-600 mb-4">Inicia sesión para acceder al sistema de asistencia.</p>
+            <input type="text" id="usernameInput" placeholder="Usuario"
+                    class="p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full mb-4">
+            <input type="password" id="passwordInput" placeholder="Contraseña"
+                    class="p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full mb-4">
+            <button id="loginButton" class="button-primary w-full">Iniciar Sesión</button>
+            <div id="loginMessage" class="message-box hidden mt-4"></div>
+        </div>
+
+        <div id="app-container" class="hidden flex-col gap-1.5rem">
+            <p class="text-gray-600">Escanea tu QR y mira a la cámara para registrar tu asistencia.</p>
+
+            <div class="video-canvas-container">
+                <video id="videoInput" autoplay muted playsinline></video>
+                <canvas id="canvas"></canvas>
+            </div>
+
+            <input type="text" id="studentIdDisplay" placeholder="ID del Alumno"
+                    class="p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" disabled>
+
+            <button id="startScanButton" class="button-primary flex items-center justify-center" disabled>
+                <span id="scanButtonText">Cargando recursos...</span>
+            </button>
+
+            <div id="message" class="message-box hidden"></div>
+        </div>
+    </div>
+
+    <script>
+        // Se ejecuta cuando la ventana y todos sus recursos han sido cargados
+        window.onload = async function() {
+            // Referencias a elementos del DOM
+            const loginContainer = document.getElementById('login-container');
+            const appContainer = document.getElementById('app-container');
+            const usernameInput = document.getElementById('usernameInput');
+            const passwordInput = document.getElementById('passwordInput');
+            const loginButton = document.getElementById('loginButton');
+            const loginMessageDiv = document.getElementById('loginMessage');
+
+            const videoInput = document.getElementById('videoInput');
+            const canvas = document.getElementById('canvas');
+            const studentIdDisplay = document.getElementById('studentIdDisplay');
+            const startScanButton = document.getElementById('startScanButton');
+            const messageDiv = document.getElementById('message');
+            const scanButtonText = document.getElementById('scanButtonText');
+            const context = canvas.getContext('2d'); // Obtener el contexto 2D del canvas
+
+            // --- CONFIGURACIÓN DEL GOOGLE APPS SCRIPT WEB APP ---
+            const APPS_SCRIPT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxXXpBGkmLKfMA4IGZgG6BZMah2MnSAKa9CkRXJPnupE3ucF5UxjgfnfxlUKQxnN9s/exec'; // <<< ¡PEGA TU URL REAL AQUÍ!
+            // ---------------------------------------------------
+
+            // Credenciales de acceso
+            const CORRECT_USERNAME = 'CONALEP 115';
+            const CORRECT_PASSWORD = 'Orientacioneducativa115*';
+
+            // URL directa del folder de modelos en tu Google Drive
+            // Esta URL se obtiene al compartir la carpeta completa.
+            // Para que face-api.js funcione, todos los archivos deben estar en la misma carpeta.
+            const MODELS_URL = 'https://drive.google.com/uc?export=download&id=1tNl5B4l2t4l5tYf4e7r8u9i0o1p2a3s'; // <--- Reemplaza con la URL de tu carpeta de modelos
+
+            // Umbral de distancia para la verificación facial. Un valor más bajo es más estricto (0.6 es común)
+            const FACE_MATCH_THRESHOLD = 0.6; // Puedes ajustar este valor (ej. 0.5 para más estricto, 0.7 para más laxo)
+
+            let stream = null; // Para almacenar el stream de la cámara
+            let animationFrameId = null; // Para controlar el bucle de animación
+            let labeledFaceDescriptors = []; // Almacenará los descriptores de los alumnos enrollados
+            let currentStudentId = null; // Almacena el ID del alumno después de escanear el QR
+
+            // Variables para el temporizador de inactividad
+            const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutos en milisegundos
+            let inactivityTimer;
+
+            // Función para mostrar mensajes al usuario
+            function showMessage(text, type, targetDiv = messageDiv) {
+                targetDiv.textContent = text;
+                targetDiv.className = `message-box ${type}`;
+                targetDiv.classList.remove('hidden');
+            }
+
+            // Función para ocultar mensajes
+            function hideMessage(targetDiv = messageDiv) {
+                targetDiv.classList.add('hidden');
+            }
+
+            // --- Lógica del Temporizador de Inactividad ---
+            function resetInactivityTimer() {
+                clearTimeout(inactivityTimer);
+                inactivityTimer = setTimeout(logoutUser, INACTIVITY_TIMEOUT_MS);
+            }
+
+            function logoutUser() {
+                console.log('Inactividad detectada. Volviendo a la pantalla de login.');
+                // Detener la cámara si está activa
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                    videoInput.srcObject = null;
+                }
+                if (animationFrameId) {
+                    cancelAnimationFrame(animationFrameId);
+                    animationFrameId = null; // Reset animation frame ID
+                }
+
+                // Ocultar la aplicación y mostrar el login
+                appContainer.classList.add('hidden');
+                loginContainer.classList.remove('hidden');
+                usernameInput.value = ''; // Limpiar campos de login
+                passwordInput.value = '';
+                showMessage('Sesión expirada por inactividad. Por favor, inicia sesión de nuevo.', 'message-error', loginMessageDiv);
+
+                // Remover los listeners de actividad para evitar que se reinicie el temporizador
+                // antes de que el usuario inicie sesión de nuevo.
+                document.removeEventListener('mousemove', resetInactivityTimer);
+                document.removeEventListener('keydown', resetInactivityTimer);
+                document.removeEventListener('click', resetInactivityTimer);
+            }
+            // --- Fin Lógica del Temporizador de Inactividad ---
+
+
+            // --- Lógica de Autenticación ---
+            loginButton.addEventListener('click', handleLogin);
+            usernameInput.addEventListener('keypress', function(event) {
+                if (event.key === 'Enter') {
+                    passwordInput.focus();
+                }
+            });
+            passwordInput.addEventListener('keypress', function(event) {
+                if (event.key === 'Enter') {
+                    handleLogin();
+                }
+            });
+
+            function handleLogin() {
+                const username = usernameInput.value.trim();
+                const password = passwordInput.value.trim();
+
+                if (username === CORRECT_USERNAME && password === CORRECT_PASSWORD) {
+                    hideMessage(loginMessageDiv);
+                    loginContainer.classList.add('hidden');
+                    appContainer.classList.remove('hidden');
+                    appContainer.style.display = 'flex'; // Asegurar que se muestre como flex-col
+                    initializeAttendanceApp(); // Iniciar la carga de modelos y cámara
+                    
+                    // Iniciar el temporizador de inactividad después de un login exitoso
+                    document.addEventListener('mousemove', resetInactivityTimer);
+                    document.addEventListener('keydown', resetInactivityTimer);
+                    document.addEventListener('click', resetInactivityTimer);
+                    resetInactivityTimer(); // Iniciar el temporizador
+                } else {
+                    showMessage('Usuario o contraseña incorrectos.', 'message-error', loginMessageDiv);
+                }
+            }
+            // --- Fin Lógica de Autenticación ---
+
+
+            // Cargar los modelos de face-api.js
+            async function loadModels() {
+                try {
+                    // Cargar cada modelo usando su URL de manifiesto
+                    await faceapi.nets.tinyFaceDetector.load(MODELS_URL);
+                    await faceapi.nets.faceLandmark68Net.load(MODELS_URL);
+                    await faceapi.nets.faceRecognitionNet.load(MODELS_URL);
+                    console.log('Modelos de IA cargados.');
+                } catch (error) {
+                    throw new Error('Error al cargar los modelos de IA. ' + error.message);
+                }
+            }
+
+            // Recuperar descriptores faciales de los alumnos enrollados desde Google Sheet
+            async function fetchEnrollmentDescriptors() {
+                try {
+                    const response = await fetch(`${APPS_SCRIPT_WEB_APP_URL}?action=getDescriptors`, {
+                        method: 'GET',
+                        mode: 'cors' // Usamos CORS para GET para poder leer la respuesta
+                    });
+                    const data = await response.json();
+
+                    if (data.status === 'success' && data.data) {
+                        labeledFaceDescriptors = data.data.map(item => {
+                            // Convertir la cadena JSON del descriptor de vuelta a Float32Array
+                            const descriptorArray = JSON.parse(item.descriptor);
+                            return new faceapi.LabeledFaceDescriptors(
+                                item.id, // El ID del alumno como etiqueta (debe ser el ID numérico)
+                                [new Float32Array(descriptorArray)] // Array de descriptores (un rostro por alumno)
+                            );
+                        });
+                        console.log(`Descriptores de ${labeledFaceDescriptors.length} alumnos cargados.`);
+                    } else {
+                        throw new Error(data.message || 'Error al obtener descriptores de enrollamiento.');
+                    }
+                } catch (error) {
+                    throw new Error('Error al cargar los datos de enrollamiento. Asegúrate de que los alumnos estén enrollados y el Apps Script funcione. ' + error.message);
+                }
+            }
+
+            // Función auxiliar para dibujar líneas en el canvas para la detección de QR
+            function drawLine(begin, end, color) {
+                context.beginPath();
+                context.moveTo(begin.x, begin.y);
+                context.lineTo(end.x, end.y);
+                context.lineWidth = 4;
+                context.strokeStyle = color;
+                context.stroke();
+            }
+
+            // Función para dibujar un recuadro guía para el posicionamiento facial
+            function drawFaceGuide() {
+                // Dibujar un rectángulo en el centro para la guía facial
+                const guideWidth = canvas.width * 0.6;
+                const guideHeight = canvas.height * 0.7;
+                const guideX = (canvas.width - guideWidth) / 2;
+                const guideY = (canvas.height - guideHeight) / 2;
+
+                context.beginPath();
+                context.rect(guideX, guideY, guideWidth, guideHeight);
+                context.lineWidth = 2;
+                context.strokeStyle = 'rgba(255, 255, 0, 0.7)'; // Guía amarilla translúcida
+                context.stroke();
+
+                context.font = '16px Inter';
+                context.fillStyle = 'rgba(255, 255, 0, 0.9)';
+                context.textAlign = 'center';
+                context.fillText('Centra tu rostro aquí', canvas.width / 2, guideY - 10);
+            }
+
+            // Bucle principal para el escaneo de QR
+            function scanQRCodeLoop() {
+                animationFrameId = requestAnimationFrame(scanQRCodeLoop); // Continuar el bucle
+
+                if (videoInput.readyState === videoInput.HAVE_ENOUGH_DATA) {
+                    canvas.height = videoInput.videoHeight;
+                    canvas.width = videoInput.videoWidth;
+                    
+                    context.drawImage(videoInput, 0, 0, canvas.width, canvas.height); // Dibujar el fotograma actual
+                    
+                    // No dibujar la guía facial en la fase de escaneo QR
+                    // drawFaceGuide(); 
+
+                    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                    
+                    const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                        inversionAttempts: "attemptBoth",
+                    });
+
+                    if (code) {
+                        // QR detectado, dibujar un recuadro alrededor
+                        drawLine(code.location.topLeftCorner, code.location.topRightCorner, "#FF3B58");
+                        drawLine(code.location.topRightCorner, code.location.bottomRightCorner, "#FF3B58");
+                        drawLine(code.location.bottomRightCorner, code.location.bottomLeftCorner, "#FF3B58");
+                        drawLine(code.location.bottomLeftCorner, code.location.topLeftCorner, "#FF3B58");
+
+                        cancelAnimationFrame(animationFrameId); // Detener el bucle de QR
+                        currentStudentId = code.data; // Guardar el ID del alumno (debe ser el ID numérico)
+                        studentIdDisplay.value = currentStudentId; // Mostrar el ID escaneado
+                        
+                        showMessage(`QR escaneado: ${currentStudentId}. Prepárate para la verificación facial...`, 'message-box');
+                        scanButtonText.innerHTML = '<span class="loading-spinner"></span> Preparando verificación...';
+
+                        // Pausa de 2 segundos antes de iniciar la verificación facial
+                        setTimeout(() => {
+                            startFaceVerificationLoop(); // Iniciar la fase de verificación facial
+                        }, 2000); // Pausa de 2 segundos
+                    }
+                }
+            }
+
+            // Bucle principal para la verificación facial
+            async function startFaceVerificationLoop() {
+                scanButtonText.innerHTML = '<span class="loading-spinner"></span> Verificando rostro...';
+                startScanButton.disabled = true; // Mantener deshabilitado durante la verificación
+
+                // Limpiar canvas antes de dibujar la guía facial
+                context.clearRect(0, 0, canvas.width, canvas.height);
+                context.drawImage(videoInput, 0, 0, canvas.width, canvas.height); // Redibujar el frame del video
+                drawFaceGuide(); // Dibujar la guía facial
+
+                // Intentar detectar rostro cada cierto tiempo (ej. cada 500ms)
+                const faceDetectionInterval = setInterval(async () => {
+                    context.clearRect(0, 0, canvas.width, canvas.height); // Limpiar para redibujar
+                    context.drawImage(videoInput, 0, 0, canvas.width, canvas.height); // Redibujar video
+                    drawFaceGuide(); // Redibujar guía
+
+                    const detections = await faceapi.detectSingleFace(canvas, new faceapi.TinyFaceDetectorOptions())
+                                                 .withFaceLandmarks()
+                                                 .withFaceDescriptor();
+
+                    if (detections) {
+                        clearInterval(faceDetectionInterval); // Detener el intervalo de detección facial
+                        
+                        // Dibujar el recuadro de detección facial en el canvas
+                        const box = detections.detection.box;
+                        context.beginPath();
+                        context.rect(box.x, box.y, box.width, box.height);
+                        context.lineWidth = 2;
+                        context.strokeStyle = 'lime'; // Recuadro verde para el rostro detectado
+                        context.stroke();
+
+                        // Proceder con la verificación y el registro
+                        await sendAttendanceToAppsScript(currentStudentId, detections.descriptor);
+                    } else {
+                        showMessage('No se detectó ningún rostro para la verificación. Asegúrate de estar bien centrado.', 'message-error');
+                    }
+                }, 500); // Intenta detectar rostro cada 0.5 segundos
+            }
+
+            // Función para enviar datos de asistencia a Google Apps Script
+            async function sendAttendanceToAppsScript(studentId, detectedDescriptor) {
+                let verificationStatus = 'No Verificado';
+                let imageData = canvas.toDataURL('image/jpeg', 0.8); // Captura la imagen final
+
+                try {
+                    if (detectedDescriptor) {
+                        const faceMatcher = new faceapi.FaceMatcher(labeledFaceDescriptors, FACE_MATCH_THRESHOLD);
+                        const bestMatch = faceMatcher.findBestMatch(detectedDescriptor);
+
+                        console.log('Mejor coincidencia:', bestMatch.toString());
+
+                        // La comparación se hace con bestMatch.label (que es el ID numérico del enrollamiento)
+                        // y studentId (que debe ser el ID numérico del QR)
+                        if (bestMatch.label === studentId) {
+                            verificationStatus = 'Verificado';
+                            showMessage(`Asistencia de ${studentId} verificada con éxito.`, 'message-success');
+                        } else if (bestMatch.label !== 'unknown') {
+                            // Coincide con otro alumno enrollado (ID numérico)
+                            verificationStatus = `No Verificado (Coincide con ${bestMatch.label})`;
+                            showMessage(`Error: El rostro no coincide con ${studentId}. Coincide con ${bestMatch.label}.`, 'message-error');
+                        } else {
+                            // No coincide con ningún alumno enrollado
+                            verificationStatus = 'No Verificado (Rostro desconocido)';
+                            showMessage(`Error: Rostro desconocido o no coincide con ${studentId}.`, 'message-error');
+                        }
+                    } else {
+                        showMessage('No se detectó ningún rostro para la verificación. Asegúrate de estar bien centrado.', 'message-error');
+                        verificationStatus = 'No Verificado (Rostro no detectado)';
+                    }
+
+                    const formData = new URLSearchParams();
+                    formData.append('action', 'attendance');
+                    formData.append('id', studentId);
+                    formData.append('imageData', imageData);
+                    formData.append('verificationStatus', verificationStatus);
+
+                    const response = await fetch(APPS_SCRIPT_WEB_APP_URL, {
+                        method: 'POST',
+                        mode: 'no-cors',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: formData.toString()
+                    });
+
+                    console.log('Datos de asistencia enviados a Apps Script.');
+
+                } catch (error) {
+                    console.error('Error durante la verificación o registro de asistencia:', error);
+                    showMessage('Error crítico en el proceso de asistencia. Revisa la consola.', 'message-error');
+                } finally {
+                    // Reiniciar la interfaz para el siguiente escaneo después de un breve retraso
+                    setTimeout(() => {
+                        studentIdDisplay.value = '';
+                        showMessage('Listo para el siguiente alumno. Escanea el QR.', 'message-box');
+                        scanButtonText.textContent = 'Iniciar Escaneo y Cámara';
+                        startScanButton.disabled = false;
+                        context.clearRect(0, 0, canvas.width, canvas.height); // Limpiar canvas
+                        animationFrameId = requestAnimationFrame(scanQRCodeLoop); // Reiniciar el bucle de escaneo QR
+                    }, 3000); // Esperar 3 segundos antes de reiniciar
+                }
+            }
+
+            // Iniciar la cámara y el bucle de escaneo QR
+            async function startScanAndCamera() {
+                hideMessage();
+                scanButtonText.innerHTML = '<span class="loading-spinner"></span> Solicitando acceso a cámara...';
+                startScanButton.disabled = true;
+
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                    videoInput.srcObject = stream;
+                    
+                    await new Promise((resolve) => {
+                        videoInput.onloadedmetadata = () => {
+                            canvas.width = videoInput.videoWidth;
+                            canvas.height = videoInput.videoHeight;
+                            videoInput.style.display = 'none';
+                            canvas.style.display = 'block';
+                            resolve();
+                        };
+                    });
+
+                    await videoInput.play();
+                    
+                    scanQRCodeLoop(); // Iniciar el bucle de escaneo QR
+                    scanButtonText.textContent = 'Escaneando QR...';
+                    showMessage('Cámara iniciada. Escanea tu QR.', 'message-success');
+
+                } catch (err) {
+                    showMessage('Error al iniciar la cámara. Asegúrate de dar permisos y que no esté en uso por otra aplicación.', 'message-error');
+                    console.error('Error starting camera:', err);
+                    scanButtonText.textContent = 'Iniciar Escaneo y Cámara';
+                    startScanButton.disabled = false;
+                }
+            }
+
+            // Event Listeners
+            startScanButton.addEventListener('click', startScanAndCamera);
+
+            // Limpiar la cámara y el escáner al cerrar la página
+            window.addEventListener('beforeunload', () => {
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                }
+                if (animationFrameId) {
+                    cancelAnimationFrame(animationFrameId);
+                }
+                clearTimeout(inactivityTimer); // Limpiar el temporizador al cerrar la página
+            });
+
+            // Función para inicializar la aplicación de asistencia después del login
+            async function initializeAttendanceApp() {
+                showMessage('Cargando modelos de IA y datos de enrollamiento...', 'message-box');
+                try {
+                    await Promise.all([
+                        loadModels(),
+                        fetchEnrollmentDescriptors()
+                    ]);
+                    showMessage('Recursos cargados. Haz clic en "Iniciar Escaneo y Cámara".', 'message-success');
+                    startScanButton.disabled = false;
+                    scanButtonText.textContent = 'Iniciar Escaneo y Cámara';
+                } catch (error) {
+                    showMessage(`Error al cargar recursos: ${error.message}`, 'message-error');
+                    console.error('Error general al cargar recursos:', error);
+                    startScanButton.disabled = true;
+                    scanButtonText.textContent = 'Error al cargar';
+                }
+            }
+        };
+    </script>
+</body>
+</html>
