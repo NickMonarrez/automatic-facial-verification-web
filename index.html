@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SISCO (Sistema de Identificación Segura CONALEP)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.1.0/dist/jsQR.min.js"></script>
+    <style>
+        /* Estilos personalizados para la aplicación */
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #e0f0e0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            position: relative;
+            overflow: hidden;
+        }
+        #background-image-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            /* Ruta local a la imagen de fondo */
+            background-image: url('images/fondo-pantalla.jpg'); 
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            z-index: -1;
+        }
+        .container {
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 1.5rem;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            padding: 2.5rem;
+            width: 100%;
+            max-width: 36rem;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            position: relative;
+            z-index: 1;
+        }
+        .logo {
+            position: absolute;
+            top: 1.5rem;
+            right: 1.5rem;
+            width: 150px;
+            height: auto;
+            border-radius: 0.5rem;
+        }
+        .video-canvas-container {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            border-radius: 0.75rem;
+            overflow: hidden;
+            background-color: #000;
+        }
+        .video-canvas-container video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 0.75rem;
+            display: none;
+        }
+        .video-canvas-container canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 0.75rem;
+            display: block;
+        }
+        .button-primary {
+            background-image: linear-gradient(to right, #6366f1, #8b5cf6);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.75rem;
+            font-weight: 600;
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            cursor: pointer;
+            border: none;
+            outline: none;
+        }
+        .button-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
+        }
+        .message-box {
+            padding: 1rem;
+            border-radius: 0.5rem;
+            text-align: left;
+            word-wrap: break-word;
+        }
+        .message-success {
+            background-color: #d1fae5;
+            color: #065f46;
+            border-left: 4px solid #10b981;
+        }
+        .message-error {
+            background-color: #fee2e2;
+            color: #991b1b;
+            border-left: 4px solid #ef4444;
+        }
+        .loading-spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-left-color: #6366f1;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+            margin-right: 0.5rem;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div id="background-image-container"></div>
+    <div class="container">
+        <img src="orgullosamente-conalep-logo-png_seeklogo-289552.png" alt="Logo CONALEP" class="logo" onerror="console.error('Error al cargar el logo. Asegúrate de que orgullosamente-conalep-logo-png_seeklogo-289552.png esté en la misma carpeta que attendance_app.html o que la ruta sea correcta.');">
+        <h1 class="text-5xl font-bold text-green-600 text-center pr-40">SISCO (Sistema de Identificación Segura CONALEP)</h1>
+        <p class="text-2xl font-bold text-gray-600 text-center -mt-4">PLANTEL CONALEP NAVOLATO</p>
+        <div id="login-container">
+            <p class="text-gray-600 mb-4">Inicia sesión para acceder al sistema de asistencia.</p>
+            <input type="text" id="usernameInput" placeholder="Usuario"
+                    class="p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full mb-4">
+            <input type="password" id="passwordInput" placeholder="Contraseña"
+                    class="p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full mb-4">
+            <button id="loginButton" class="button-primary w-full">Iniciar Sesión</button>
+            <div id="loginMessage" class="message-box hidden mt-4"></div>
+        </div>
+        <div id="app-container" class="hidden flex-col gap-1.5rem">
+            <p class="text-gray-600">Escanea tu QR y mira a la cámara para registrar tu asistencia.</p>
+            <div class="video-canvas-container">
+                <video id="videoInput" autoplay muted playsinline></video>
+                <canvas id="canvas"></canvas>
+            </div>
+            <input type="text" id="studentIdDisplay" placeholder="ID del Alumno"
+                    class="p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" disabled>
+            <button id="startScanButton" class="button-primary flex items-center justify-center" disabled>
+                <span id="scanButtonText">Cargando recursos...</span>
+            </button>
+            <div id="message" class="message-box hidden"></div>
+        </div>
+    </div>
+    <script>
+        window.onload = async function() {
+            const loginContainer = document.getElementById('login-container');
+            const appContainer = document.getElementById('app-container');
+            const usernameInput = document.getElementById('usernameInput');
+            const passwordInput = document.getElementById('passwordInput');
+            const loginButton = document.getElementById('loginButton');
+            const loginMessageDiv = document.getElementById('loginMessage');
+            const videoInput = document.getElementById('videoInput');
+            const canvas = document.getElementById('canvas');
+            const studentIdDisplay = document.getElementById('studentIdDisplay');
+            const startScanButton = document.getElementById('startScanButton');
+            const messageDiv = document.getElementById('message');
+            const scanButtonText = document.getElementById('scanButtonText');
+            const context = canvas.getContext('2d');
+            const APPS_SCRIPT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxXXpBGkmLKfMA4IGZgG6BZMah2MnSAKa9CkRXJPnupE3ucF5UxjgfnfxlUKQxnN9s/exec';
+            const CORRECT_USERNAME = 'CONALEP 115';
+            const CORRECT_PASSWORD = 'Orientacioneducativa115*';
+            // Ruta local a la carpeta de modelos
+            const MODELS_URL = './models/';
+            const FACE_MATCH_THRESHOLD = 0.6;
+            let stream = null;
+            let animationFrameId = null;
+            let labeledFaceDescriptors = [];
+            let currentStudentId = null;
+            const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
+            let inactivityTimer;
+            function showMessage(text, type, targetDiv = messageDiv) {
+                targetDiv.textContent = text;
+                targetDiv.className = `message-box ${type}`;
+                targetDiv.classList.remove('hidden');
+            }
+            function hideMessage(targetDiv = messageDiv) {
+                targetDiv.classList.add('hidden');
+            }
+            function resetInactivityTimer() {
+                clearTimeout(inactivityTimer);
+                inactivityTimer = setTimeout(logoutUser, INACTIVITY_TIMEOUT_MS);
+            }
+            function logoutUser() {
+                console.log('Inactividad detectada. Volviendo a la pantalla de login.');
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                    videoInput.srcObject = null;
+                }
+                if (animationFrameId) {
+                    cancelAnimationFrame(animationFrameId);
+                    animationFrameId = null;
+                }
+                appContainer.classList.add('hidden');
+                loginContainer.classList.remove('hidden');
+                usernameInput.value = '';
+                passwordInput.value = '';
+                showMessage('Sesión expirada por inactividad. Por favor, inicia sesión de nuevo.', 'message-error', loginMessageDiv);
+                document.removeEventListener('mousemove', resetInactivityTimer);
+                document.removeEventListener('keydown', resetInactivityTimer);
+                document.removeEventListener('click', resetInactivityTimer);
+            }
+            loginButton.addEventListener('click', handleLogin);
+            usernameInput.addEventListener('keypress', function(event) {
+                if (event.key === 'Enter') {
+                    passwordInput.focus();
+                }
+            });
+            passwordInput.addEventListener('keypress', function(event) {
+                if (event.key === 'Enter') {
+                    handleLogin();
+                }
+            });
+            function handleLogin() {
+                const username = usernameInput.value.trim();
+                const password = passwordInput.value.trim();
+                if (username === CORRECT_USERNAME && password === CORRECT_PASSWORD) {
+                    hideMessage(loginMessageDiv);
+                    loginContainer.classList.add('hidden');
+                    appContainer.classList.remove('hidden');
+                    appContainer.style.display = 'flex';
+                    initializeAttendanceApp();
+                    document.addEventListener('mousemove', resetInactivityTimer);
+                    document.addEventListener('keydown', resetInactivityTimer);
+                    document.addEventListener('click', resetInactivityTimer);
+                    resetInactivityTimer();
+                } else {
+                    showMessage('Usuario o contraseña incorrectos.', 'message-error', loginMessageDiv);
+                }
+            }
+            async function loadModels() {
+                try {
+                    await faceapi.nets.tinyFaceDetector.load(MODELS_URL);
+                    await faceapi.nets.faceLandmark68Net.load(MODELS_URL);
+                    await faceapi.nets.faceRecognitionNet.load(MODELS_URL);
+                    console.log('Modelos de IA cargados.');
+                } catch (error) {
+                    throw new Error('Error al cargar los modelos de IA. ' + error.message);
+                }
+            }
+            async function fetchEnrollmentDescriptors() {
+                try {
+                    const response = await fetch(`${APPS_SCRIPT_WEB_APP_URL}?action=getDescriptors`, {
+                        method: 'GET',
+                        mode: 'cors'
+                    });
+                    const data = await response.json();
+                    if (data.status === 'success' && data.data) {
+                        labeledFaceDescriptors = data.data.map(item => {
+                            const descriptorArray = JSON.parse(item.descriptor);
+                            return new faceapi.LabeledFaceDescriptors(
+                                item.id,
+                                [new Float32Array(descriptorArray)]
+                            );
+                        });
+                        console.log(`Descriptores de ${labeledFaceDescriptors.length} alumnos cargados.`);
+                    } else {
+                        throw new Error(data.message || 'Error al obtener descriptores de enrollamiento.');
+                    }
+                } catch (error) {
+                    throw new Error('Error al cargar los datos de enrollamiento. Asegúrate de que los alumnos estén enrollados y el Apps Script funcione. ' + error.message);
+                }
+            }
+            function drawLine(begin, end, color) {
+                context.beginPath();
+                context.moveTo(begin.x, begin.y);
+                context.lineTo(end.x, end.y);
+                context.lineWidth = 4;
+                context.strokeStyle = color;
+                context.stroke();
+            }
+            function drawFaceGuide() {
+                const guideWidth = canvas.width * 0.6;
+                const guideHeight = canvas.height * 0.7;
+                const guideX = (canvas.width - guideWidth) / 2;
+                const guideY = (canvas.height - guideHeight) / 2;
+                context.beginPath();
+                context.rect(guideX, guideY, guideWidth, guideHeight);
+                context.lineWidth = 2;
+                context.strokeStyle = 'rgba(255, 255, 0, 0.7)';
+                context.stroke();
+                context.font = '16px Inter';
+                context.fillStyle = 'rgba(255, 255, 0, 0.9)';
+                context.textAlign = 'center';
+                context.fillText('Centra tu rostro aquí', canvas.width / 2, guideY - 10);
+            }
+            function scanQRCodeLoop() {
+                animationFrameId = requestAnimationFrame(scanQRCodeLoop);
+                if (videoInput.readyState === videoInput.HAVE_ENOUGH_DATA) {
+                    canvas.height = videoInput.videoHeight;
+                    canvas.width = videoInput.videoWidth;
+                    context.drawImage(videoInput, 0, 0, canvas.width, canvas.height);
+                    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                    const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                        inversionAttempts: "attemptBoth",
+                    });
+                    if (code) {
+                        drawLine(code.location.topLeftCorner, code.location.topRightCorner, "#FF3B58");
+                        drawLine(code.location.topRightCorner, code.location.bottomRightCorner, "#FF3B58");
+                        drawLine(code.location.bottomRightCorner, code.location.bottomLeftCorner, "#FF3B58");
+                        drawLine(code.location.bottomLeftCorner, code.location.topLeftCorner, "#FF3B58");
+                        cancelAnimationFrame(animationFrameId);
+                        currentStudentId = code.data;
+                        studentIdDisplay.value = currentStudentId;
+                        showMessage(`QR escaneado: ${currentStudentId}. Prepárate para la verificación facial...`, 'message-box');
+                        scanButtonText.innerHTML = '<span class="loading-spinner"></span> Preparando verificación...';
+                        setTimeout(() => {
+                            startFaceVerificationLoop();
+                        }, 2000);
+                    }
+                }
+            }
+            async function startFaceVerificationLoop() {
+                scanButtonText.innerHTML = '<span class="loading-spinner"></span> Verificando rostro...';
+                startScanButton.disabled = true;
+                context.clearRect(0, 0, canvas.width, canvas.height);
+                context.drawImage(videoInput, 0, 0, canvas.width, canvas.height);
+                drawFaceGuide();
+                const faceDetectionInterval = setInterval(async () => {
+                    context.clearRect(0, 0, canvas.width, canvas.height);
+                    context.drawImage(videoInput, 0, 0, canvas.width, canvas.height);
+                    drawFaceGuide();
+                    const detections = await faceapi.detectSingleFace(canvas, new faceapi.TinyFaceDetectorOptions())
+                                                 .withFaceLandmarks()
+                                                 .withFaceDescriptor();
+                    if (detections) {
+                        clearInterval(faceDetectionInterval);
+                        const box = detections.detection.box;
+                        context.beginPath();
+                        context.rect(box.x, box.y, box.width, box.height);
+                        context.lineWidth = 2;
+                        context.strokeStyle = 'lime';
+                        context.stroke();
+                        await sendAttendanceToAppsScript(currentStudentId, detections.descriptor);
+                    } else {
+                        showMessage('No se detectó ningún rostro para la verificación. Asegúrate de estar bien centrado.', 'message-error');
+                    }
+                }, 500);
+            }
+            async function sendAttendanceToAppsScript(studentId, detectedDescriptor) {
+                let verificationStatus = 'No Verificado';
+                let imageData = canvas.toDataURL('image/jpeg', 0.8);
+                try {
+                    if (detectedDescriptor) {
+                        const faceMatcher = new faceapi.FaceMatcher(labeledFaceDescriptors, FACE_MATCH_THRESHOLD);
+                        const bestMatch = faceMatcher.findBestMatch(detectedDescriptor);
+                        console.log('Mejor coincidencia:', bestMatch.toString());
+                        if (bestMatch.label === studentId) {
+                            verificationStatus = 'Verificado';
+                            showMessage(`Asistencia de ${studentId} verificada con éxito.`, 'message-success');
+                        } else if (bestMatch.label !== 'unknown') {
+                            verificationStatus = `No Verificado (Coincide con ${bestMatch.label})`;
+                            showMessage(`Error: El rostro no coincide con ${studentId}. Coincide con ${bestMatch.label}.`, 'message-error');
+                        } else {
+                            verificationStatus = 'No Verificado (Rostro desconocido)';
+                            showMessage(`Error: Rostro desconocido o no coincide con ${studentId}.`, 'message-error');
+                        }
+                    } else {
+                        showMessage('No se detectó ningún rostro para la verificación. Asegúrate de estar bien centrado.', 'message-error');
+                        verificationStatus = 'No Verificado (Rostro no detectado)';
+                    }
+                    const formData = new URLSearchParams();
+                    formData.append('action', 'attendance');
+                    formData.append('id', studentId);
+                    formData.append('imageData', imageData);
+                    formData.append('verificationStatus', verificationStatus);
+                    const response = await fetch(APPS_SCRIPT_WEB_APP_URL, {
+                        method: 'POST',
+                        mode: 'no-cors',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: formData.toString()
+                    });
+                    console.log('Datos de asistencia enviados a Apps Script.');
+                } catch (error) {
+                    console.error('Error durante la verificación o registro de asistencia:', error);
+                    showMessage('Error crítico en el proceso de asistencia. Revisa la consola.', 'message-error');
+                } finally {
+                    setTimeout(() => {
+                        studentIdDisplay.value = '';
+                        showMessage('Listo para el siguiente alumno. Escanea el QR.', 'message-box');
+                        scanButtonText.textContent = 'Iniciar Escaneo y Cámara';
+                        startScanButton.disabled = false;
+                        context.clearRect(0, 0, canvas.width, canvas.height);
+                        animationFrameId = requestAnimationFrame(scanQRCodeLoop);
+                    }, 3000);
+                }
+            }
+            async function startScanAndCamera() {
+                hideMessage();
+                scanButtonText.innerHTML = '<span class="loading-spinner"></span> Solicitando acceso a cámara...';
+                startScanButton.disabled = true;
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                    videoInput.srcObject = stream;
+                    await new Promise((resolve) => {
+                        videoInput.onloadedmetadata = () => {
+                            canvas.width = videoInput.videoWidth;
+                            canvas.height = videoInput.videoHeight;
+                            videoInput.style.display = 'none';
+                            canvas.style.display = 'block';
+                            resolve();
+                        };
+                    });
+                    await videoInput.play();
+                    scanQRCodeLoop();
+                    scanButtonText.textContent = 'Escaneando QR...';
+                    showMessage('Cámara iniciada. Escanea tu QR.', 'message-success');
+                } catch (err) {
+                    showMessage('Error al iniciar la cámara. Asegúrate de dar permisos y que no esté en uso por otra aplicación.', 'message-error');
+                    console.error('Error starting camera:', err);
+                    scanButtonText.textContent = 'Iniciar Escaneo y Cámara';
+                    startScanButton.disabled = false;
+                }
+            }
+            startScanButton.addEventListener('click', startScanAndCamera);
+            window.addEventListener('beforeunload', () => {
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                }
+                if (animationFrameId) {
+                    cancelAnimationFrame(animationFrameId);
+                }
+                clearTimeout(inactivityTimer);
+            });
+            async function initializeAttendanceApp() {
+                showMessage('Cargando modelos de IA y datos de enrollamiento...', 'message-box');
+                try {
+                    await Promise.all([
+                        loadModels(),
+                        fetchEnrollmentDescriptors()
+                    ]);
+                    showMessage('Recursos cargados. Haz clic en "Iniciar Escaneo y Cámara".', 'message-success');
+                    startScanButton.disabled = false;
+                    scanButtonText.textContent = 'Iniciar Escaneo y Cámara';
+                } catch (error) {
+                    showMessage(`Error al cargar recursos: ${error.message}`, 'message-error');
+                    console.error('Error general al cargar recursos:', error);
+                    startScanButton.disabled = true;
+                    scanButtonText.textContent = 'Error al cargar';
+                }
+            }
+        };
+    </script>
+</body>
+</html>
